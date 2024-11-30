@@ -162,6 +162,22 @@ def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
 
     return df
 
+def check_existing_records(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """Check for existing records in database and remove them from the dataframe."""
+    try:
+        with sqlite3.connect(DATABASE_FILE) as conn:
+            if table_name == "InstalledApps":
+                existing_packages = pd.read_sql_query("SELECT package_name FROM InstalledApps", conn)
+                if not existing_packages.empty:
+                    # Filter out records that already exist in database
+                    df = df[~df['package_name'].isin(existing_packages['package_name'])]
+                    dropped_count = len(existing_packages)
+                    if dropped_count > 0:
+                        logging.info(f"Filtered out {dropped_count} existing package records")
+    except sqlite3.Error as e:
+        logging.error(f"Database error while checking existing records: {e}")
+    return df
+
 def process_data(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
     """Processes the data for the given table."""
     try:
@@ -169,12 +185,13 @@ def process_data(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
         if not schema:
             raise ValueError(f"Schema not found for table: {table_name}")
 
-        # Remove duplicates for InstalledApps based on package_name and install_date
-        if table_name == "InstalledApps":
-            df = df.drop_duplicates(subset=["package_name", "install_date"])
-
         df = df.rename(columns=schema["renames"])
         df = validate_data(df, table_name)
+        
+        # Check and remove existing records
+        if table_name == "InstalledApps":
+            df = check_existing_records(df, table_name)
+            
     except Exception as e:
         logging.error(f"Error processing data for {table_name}: {e}")
         raise
