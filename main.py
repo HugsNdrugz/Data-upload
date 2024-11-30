@@ -52,12 +52,47 @@ def main():
 
             # Preview data
             if uploaded_file.type == "text/csv":
-                df_preview = pd.read_csv(uploaded_file, nrows=5)
+                df_preview = pd.read_csv(uploaded_file)
             else:
-                df_preview = pd.read_excel(uploaded_file, nrows=5)
+                df_preview = pd.read_excel(uploaded_file, skiprows=1)
             
-            st.write("Data Preview:")
-            st.dataframe(df_preview)
+            st.write("### Data Preview")
+            
+            # Display basic statistics
+            st.write("#### Dataset Overview")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Rows", len(df_preview))
+            with col2:
+                st.metric("Total Columns", len(df_preview.columns))
+            with col3:
+                st.metric("Memory Usage", f"{df_preview.memory_usage(deep=True).sum() / 1024:.2f} KB")
+            
+            # Show timestamp columns if any
+            date_cols = df_preview.select_dtypes(include=['datetime64']).columns
+            if len(date_cols) > 0:
+                st.write("#### Timestamp Analysis")
+                st.write("Detected timestamp columns:", ", ".join(date_cols))
+                for col in date_cols:
+                    st.write(f"**{col} - Date Range:**")
+                    min_date = df_preview[col].min()
+                    max_date = df_preview[col].max()
+                    st.write(f"From: {min_date}")
+                    st.write(f"To: {max_date}")
+            
+            # Display interactive data table
+            st.write("#### Data Table (First 100 rows)")
+            st.dataframe(df_preview.head(100), use_container_width=True)
+            
+            # Show column info
+            st.write("#### Column Information")
+            col_info = pd.DataFrame({
+                'Column': df_preview.columns,
+                'Type': df_preview.dtypes,
+                'Non-Null Count': df_preview.count(),
+                'Null Count': df_preview.isnull().sum()
+            })
+            st.dataframe(col_info, use_container_width=True)
 
             # Process button
             if st.button("Process and Import Data"):
