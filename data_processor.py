@@ -64,16 +64,16 @@ def init_db():
 
 def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[datetime]:
     """Parse timestamp with timezone handling"""
-    if pd.isna(date_str):
-        return None
+    if pd.isna(date_str) or not date_str:
+        return datetime.now(pytz.timezone(timezone))  # Default to current time for required fields
     
     try:
         # Convert to string and handle numeric timestamps
         if isinstance(date_str, (int, float)):
             try:
-                return datetime.fromtimestamp(float(date_str))
+                return datetime.fromtimestamp(float(date_str), pytz.timezone(timezone))
             except ValueError:
-                pass
+                return datetime.now(pytz.timezone(timezone))
         
         # Handle string dates
         date_str = str(date_str).strip()
@@ -86,7 +86,7 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
             try:
                 dt = datetime(1899, 12, 30) + pd.Timedelta(days=float(date_str))
             except:
-                return None
+                return datetime.now(pytz.timezone(timezone))
         
         # Set timezone if not present
         if dt.tzinfo is None:
@@ -94,7 +94,7 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
         return dt
     except Exception as e:
         logging.warning(f"Failed to parse timestamp '{date_str}': {e}")
-        return None
+        return datetime.now(pytz.timezone(timezone))
 
 def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
     """Validate and clean data according to schema"""
@@ -113,7 +113,9 @@ def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
     for col, dtype in zip(schema["columns"], schema["types"]):
         try:
             if dtype == datetime:
-                df[col] = df[col].apply(parse_timestamp_flexible)
+                df[col] = df[col].apply(lambda x: parse_timestamp_flexible(x, "UTC"))
+                if df[col].isnull().any():
+                    logging.warning(f"Found null values in datetime column '{col}'. Using current timestamp as default.")
             elif dtype == int:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
             else:
