@@ -64,5 +64,14 @@ TABLE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "Time": "time",
             "Text": "text"
         }
+    },
+    "KeylogImport": {
+        "columns": ["application", "time", "text"],
+        "types": [str, datetime, str],
+        "renames": {
+            "Application": "application",
+            "Time": "time",
+            "Text": "text"
+        }
     }
 }

@@ -8,6 +8,29 @@ from dateutil.parser import parse
 from typing import Optional, Dict, Any
 from schemas import TABLE_SCHEMAS, DATABASE_FILE, BATCH_SIZE
 
+def normalize_column_name(col: str) -> str:
+    """Normalize column name for comparison"""
+    return col.lower().strip().replace(' ', '_')
+
+def identify_table(df: pd.DataFrame) -> Optional[str]:
+    """Identifies the table based on the file's headers with flexible matching."""
+    file_headers = {normalize_column_name(col) for col in df.columns}
+    
+    for table, schema in TABLE_SCHEMAS.items():
+        # Try exact match first
+        if all(normalize_column_name(col) in file_headers for col in schema["columns"]):
+            return table
+        
+        # Try matching rename keys
+        if all(normalize_column_name(col) in file_headers for col in schema["renames"].keys()):
+            return table
+            
+        # Special case for KeylogImport/Keylogs
+        if set(['application', 'time', 'text']).issubset({normalize_column_name(col) for col in df.columns}):
+            return 'KeylogImport'
+    
+    return None
+
 def init_db():
     """Initializes the SQLite database and creates tables if they don't exist."""
     schema = """
@@ -65,96 +88,59 @@ def init_db():
 def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[datetime]:
     """Parse timestamp with timezone handling"""
     if pd.isna(date_str) or not date_str:
-        return datetime.now(pytz.timezone(timezone))  # Default to current time for required fields
-    
-    # Define supported date formats
-    date_formats = [
-        "%b %d, %I:%M %p",     # Jun 7, 1:28 PM
-        "%Y-%m-%d %H:%M:%S",   # 2024-06-07 13:28:00
-        "%b %d, %Y %I:%M %p",  # Jun 7, 2024 1:28 PM
-        "%Y-%m-%d %H:%M",      # 2024-06-07 13:28
-        "%m/%d/%Y %H:%M:%S",   # 06/07/2024 13:28:00
-        "%m/%d/%Y %I:%M %p",   # 06/07/2024 1:28 PM
-    ]
+        return None
     
     try:
-        # Convert to string and handle numeric timestamps
-        if isinstance(date_str, (int, float)):
-            try:
-                return datetime.fromtimestamp(float(date_str), pytz.timezone(timezone))
-            except ValueError:
-                return datetime.now(pytz.timezone(timezone))
-        
         # Handle string dates
-        date_str = str(date_str).strip()
-        
-        # Try specific formats first
-        for fmt in date_formats:
+        if isinstance(date_str, str):
             try:
-                dt = datetime.strptime(date_str, fmt)
-                # If year is not in the format, use current year
-                if dt.year == 1900:
-                    current_year = datetime.now().year
-                    dt = dt.replace(year=current_year)
-                return pytz.timezone(timezone).localize(dt)
-            except ValueError:
-                continue
-        
-        # Try parsing with dateutil.parser as fallback
-        try:
-            dt = parse(date_str)
-        except:
-            # Fallback for Excel date format
-            try:
-                dt = datetime(1899, 12, 30) + pd.Timedelta(days=float(date_str))
+                dt = parse(date_str)
+                if dt.tzinfo is None:
+                    dt = pytz.timezone(timezone).localize(dt)
+                return dt
             except:
-                return datetime.now(pytz.timezone(timezone))
-        
-        # Set timezone if not present
-        if dt.tzinfo is None:
-            dt = pytz.timezone(timezone).localize(dt)
-        return dt
+                return None
+        return None
     except Exception as e:
         logging.warning(f"Failed to parse timestamp '{date_str}': {e}")
-        return datetime.now(pytz.timezone(timezone))
+        return None
 
 def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
-    """Validate and clean data according to schema with detailed error reporting"""
-    schema = TABLE_SCHEMAS[table_name]
+    """Validates and cleans data according to schema"""
+    schema = TABLE_SCHEMAS.get(table_name)
+    if not schema:
+        raise ValueError(f"Schema not found for table: {table_name}")
     
-    # Check for empty dataframe
-    if df.empty:
-        raise ValueError("The uploaded file contains no data")
-        
-    # Validate columns
-    required_columns = schema["columns"]
-    missing_columns = set(required_columns) - set(df.columns)
-    if missing_columns:
-        raise ValueError(f"Missing required columns: {', '.join(missing_columns)}. Please ensure your file contains all required fields.")
-        
-    # Check for empty required columns
-    empty_columns = [col for col in required_columns if df[col].isna().all()]
-    if empty_columns:
-        raise ValueError(f"The following required columns are empty: {', '.join(empty_columns)}")
+    # Normalize column names
+    df.columns = [normalize_column_name(col) for col in df.columns]
     
-    # Select only required columns
-    df = df[required_columns]
+    # Map columns to schema
+    column_mapping = {}
+    for expected_col in schema["columns"]:
+        normalized_expected = normalize_column_name(expected_col)
+        if normalized_expected in df.columns:
+            column_mapping[normalized_expected] = expected_col
     
-    # Apply type conversions
+    if not column_mapping:
+        raise ValueError("No matching columns found in the data")
+    
+    # Select and rename columns
+    df = df.rename(columns=column_mapping)
+    
+    # Apply data type conversions
     for col, dtype in zip(schema["columns"], schema["types"]):
-        try:
-            if dtype == datetime:
-                df[col] = df[col].apply(lambda x: parse_timestamp_flexible(x, "UTC"))
-                if df[col].isnull().any():
-                    logging.warning(f"Found null values in datetime column '{col}'. Using current timestamp as default.")
-            elif dtype == int:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-            else:
-                df[col] = df[col].astype(str)
-        except Exception as e:
-            raise ValueError(f"Error converting column '{col}': {e}")
+        if col in df.columns:
+            try:
+                if dtype == datetime:
+                    df[col] = df[col].apply(parse_timestamp_flexible)
+                elif dtype == int:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+                else:
+                    df[col] = df[col].astype(str)
+            except Exception as e:
+                logging.warning(f"Error converting column {col}: {e}")
     
-    return df
+    return df[list(column_mapping.values())]
 
 def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     """Process and import data with statistics tracking"""
@@ -166,54 +152,38 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     }
     
     try:
-        # Read file with error handling
+        # Read file
         if file_path.suffix.lower() == '.csv':
-            try:
-                df = pd.read_csv(file_path)
-            except pd.errors.EmptyDataError:
-                raise ValueError("The CSV file is empty")
-            except pd.errors.ParserError:
-                raise ValueError("Unable to parse CSV file - please check the format")
+            df = pd.read_csv(file_path)
         else:
-            try:
-                # First try without skipping rows
-                df = pd.read_excel(file_path)
-                if df.empty:
-                    # If empty, try with skipping first row
-                    df = pd.read_excel(file_path, skiprows=1)
-            except ValueError as e:
-                raise ValueError(f"Excel file error: {str(e)}")
-            except Exception as e:
-                raise ValueError(f"Unable to read Excel file: {str(e)}")
+            df = pd.read_excel(file_path)
         
         stats["total_rows"] = len(df)
         
         # Identify table
-        table_name = None
-        for name, schema in TABLE_SCHEMAS.items():
-            if set(schema["renames"].keys()).issubset(df.columns):
-                table_name = name
-                break
-        
+        table_name = identify_table(df)
         if not table_name:
             raise ValueError("Could not identify table schema")
         
         stats["table_name"] = table_name
         
         # Process data
-        df = df.rename(columns=TABLE_SCHEMAS[table_name]["renames"])
         df = validate_data(df, table_name)
         
-        # Insert data in batches
+        # Insert data
         with sqlite3.connect(DATABASE_FILE) as conn:
             for i in range(0, len(df), BATCH_SIZE):
                 batch = df.iloc[i:i + BATCH_SIZE]
                 batch.to_sql(table_name, conn, if_exists='append', index=False)
                 stats["processed_rows"] += len(batch)
-                
+        
         return stats
         
     except Exception as e:
         stats["failed_rows"] = stats["total_rows"] - stats["processed_rows"]
         logging.error(f"Error processing file: {e}")
         raise
+
+def main():
+    init_db()
+    # Add any additional initialization here if needed
