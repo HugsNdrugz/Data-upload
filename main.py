@@ -140,7 +140,7 @@ def main():
             }
             st.json(file_info)
 
-            # Preview data with error handling
+            # Preview data with error handling and duplicate checking
             try:
                 if uploaded_file.type == "text/csv":
                     df_preview = pd.read_csv(uploaded_file)
@@ -182,6 +182,32 @@ def main():
                 # Clean the preview data
                 df_preview = sanitize_dataframe(df_preview)
                 
+                # Identify table type and check for duplicates
+                table_name = identify_table(df_preview)
+                new_entries_count = len(df_preview)
+                duplicates_message = ""
+                
+                if table_name == "InstalledApps":
+                    # Connect to database and check for existing records
+                    with sqlite3.connect("data.db") as conn:
+                        existing_packages = pd.read_sql_query("SELECT package_name FROM InstalledApps", conn)
+                        if not existing_packages.empty:
+                            # Count how many records are new (not in database)
+                            new_records = df_preview[~df_preview['Package Name'].isin(existing_packages['package_name'])]
+                            new_entries_count = len(new_records)
+                            duplicates_count = len(df_preview) - new_entries_count
+                            if duplicates_count > 0:
+                                duplicates_message = f"⚠️ {duplicates_count} duplicate entries found and will be skipped."
+                
+                # Display import preview
+                st.write("### Import Preview")
+                if new_entries_count > 0:
+                    st.success(f"✅ {new_entries_count} new entries will be added to the database.")
+                    if duplicates_message:
+                        st.warning(duplicates_message)
+                else:
+                    st.warning("⚠️ All entries already exist in the database. No new data will be imported.")
+                    
                 # Basic Statistics
                 st.write("### Data Analysis")
                 
