@@ -182,16 +182,17 @@ def main():
                                     df = pd.read_csv(temp_path)
                                 else:
                                     # Read Excel with proper header handling
+                                    file_path = Path(temp_path)
                                     df = pd.read_excel(
                                         temp_path,
-                                        engine='openpyxl' if temp_path.suffix.lower() == '.xlsx' else 'xlrd',
+                                        engine='openpyxl' if str(file_path).lower().endswith('.xlsx') else 'xlrd',
                                         header=0
                                     )
                                     # Check if first row is metadata and reread with correct header
                                     if any(df.columns.astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
                                         df = pd.read_excel(
                                             temp_path,
-                                            engine='openpyxl' if temp_path.suffix.lower() == '.xlsx' else 'xlrd',
+                                            engine='openpyxl' if str(file_path).lower().endswith('.xlsx') else 'xlrd',
                                             header=1
                                         )
                                 
