@@ -69,6 +69,14 @@ def main():
                             df_preview = pd.read_excel(temp_path, engine='openpyxl')
                         else:
                             df_preview = pd.read_excel(temp_path, engine='xlrd')
+                        
+                        # Remove metadata and unnamed columns
+                        if not df_preview.empty:
+                            # Drop columns that start with 'Unnamed:'
+                            df_preview = df_preview.loc[:, ~df_preview.columns.str.contains('^Unnamed:', na=False)]
+                            # Remove metadata row if it contains the tracking text
+                            if any(df_preview.iloc[0].astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
+                                df_preview = df_preview.iloc[1:].reset_index(drop=True)
                     except Exception as e:
                         st.error(f"Failed to read Excel file: {str(e)}")
                         return
@@ -76,10 +84,6 @@ def main():
                         # Clean up temp file
                         if temp_path.exists():
                             temp_path.unlink()
-                    
-                    if not df_preview.empty:
-                        # Remove the first row and reset index
-                        df_preview = df_preview.iloc[1:].reset_index(drop=True)
                 else:
                     st.error("Unsupported file type")
                     return
