@@ -14,10 +14,18 @@ def normalize_column_name(col: str) -> str:
 
 def identify_table(df: pd.DataFrame) -> Optional[str]:
     """Identifies the table based on the file's headers with flexible matching."""
+    # Drop any unnamed columns first
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed:', na=False)]
+    
     # Convert all headers to normalized form for comparison
-    file_headers = {normalize_column_name(col) for col in df.columns}
-    logging.info(f"Found headers in file: {list(df.columns)}")
+    file_headers = {normalize_column_name(col) for col in df.columns if pd.notna(col)}
+    logging.info(f"Found headers in file (after cleaning): {list(df.columns)}")
     logging.info(f"Normalized headers: {list(file_headers)}")
+    
+    # Early return if no valid headers
+    if not file_headers:
+        logging.error("No valid headers found in the file")
+        return None
     
     for table, schema in TABLE_SCHEMAS.items():
         schema_headers = {normalize_column_name(col) for col in schema["columns"]}
@@ -27,21 +35,22 @@ def identify_table(df: pd.DataFrame) -> Optional[str]:
         logging.info(f"Schema headers: {schema_headers}")
         logging.info(f"Rename headers: {rename_headers}")
         
-        # Special handling for Keylog tables
+        # Special handling for Keylog tables with more flexible matching
         if table in ['KeylogImport', 'Keylogs']:
             required_keylog_headers = {'application', 'time', 'text'}
             normalized_required = {normalize_column_name(h) for h in required_keylog_headers}
-            if normalized_required.issubset(file_headers):
+            
+            # Check if required headers are present (allowing for partial matches)
+            if any(any(req in header for header in file_headers) for req in normalized_required):
                 logging.info(f"Matched {table} table based on required keylog headers")
                 return table
         
-        # Check if either schema headers or rename headers are present
-        # Make the matching more lenient by checking if most headers are present
+        # For other tables, use a more lenient matching approach
         schema_match_ratio = len(schema_headers.intersection(file_headers)) / len(schema_headers)
         rename_match_ratio = len(rename_headers.intersection(file_headers)) / len(rename_headers)
         
-        # If 80% or more headers match, consider it a match
-        if schema_match_ratio >= 0.8 or rename_match_ratio >= 0.8:
+        # Lower the threshold to 60% for more flexible matching
+        if schema_match_ratio >= 0.6 or rename_match_ratio >= 0.6:
             logging.info(f"Matched {table} table with match ratio: {max(schema_match_ratio, rename_match_ratio):.2f}")
             return table
     
@@ -176,12 +185,26 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
         # Read the file
         if file_path.suffix.lower() == '.csv':
             df = pd.read_csv(file_path)
+            logging.info("Successfully read CSV file")
         else:
+            # First attempt to read without skipping rows
             try:
                 df = pd.read_excel(file_path, engine='openpyxl')
+                # Check if first row contains metadata about tracking
+                if any(col.lower().startswith('tracking smartphone') for col in df.columns.astype(str)):
+                    logging.info("Detected metadata row, reading file again with header row 1")
+                    df = pd.read_excel(file_path, engine='openpyxl', header=1)
+                logging.info(f"Successfully read Excel file with headers: {list(df.columns)}")
             except Exception as e:
                 logging.warning(f"Failed to read with openpyxl: {e}")
-                df = pd.read_excel(file_path, engine='xlrd')
+                try:
+                    df = pd.read_excel(file_path, engine='xlrd')
+                    if any(col.lower().startswith('tracking smartphone') for col in df.columns.astype(str)):
+                        df = pd.read_excel(file_path, engine='xlrd', header=1)
+                    logging.info(f"Successfully read Excel file with xlrd engine")
+                except Exception as e:
+                    logging.error(f"Failed to read Excel file with both engines: {e}")
+                    raise
         
         stats["total_rows"] = len(df)
         

@@ -1,0 +1,68 @@
+​​To address the "Validation Error: Could not identify table schema" issue in your data upload application, it's essential to ensure that the data cleaning logic aligns with the expected table schemas.​​ Here's a step-by-step approach to review and enhance the cleaning process:
+
+1. Review the sanitize_dataframe Function: ​​The sanitize_dataframe function is responsible for cleaning the uploaded data.​​ ​​Ensure that this function:
+
+Removes completely empty rows and columns.
+
+Strips whitespace from string columns.
+
+Replaces empty strings with NaN.
+
+Removes special characters that might cause issues.
+
+Converts columns to appropriate data types (e.g., datetime, numeric).​​
+
+
+2. Verify Column Headers After Cleaning: ​​After the data is sanitized, the column headers should match the expected schema exactly.​​ ​​This includes:
+
+Correct spelling and capitalization.
+
+No leading or trailing whitespace.
+
+Proper data types for each column.​​
+
+
+3. Enhance Schema Detection Logic: ​​The function responsible for identifying the table schema should:
+
+Compare the cleaned dataframe's columns with predefined schemas.
+
+Perform case-insensitive comparisons.
+
+Trim any leading or trailing whitespace from column names.
+
+Allow for optional columns if they are not mandatory for the schema.​​
+
+
+4. Implement Debugging Statements: ​​Add logging or print statements to:
+
+Display the dataframe's columns after cleaning.
+
+Show the expected schema for comparison.
+
+Identify any discrepancies between the actual and expected columns.​​
+
+
+5. Ensure Data Consistency: ​​Confirm that the uploaded file's data:
+
+Aligns with the expected format.
+
+Does not contain extraneous rows (e.g., metadata or empty rows) that could interfere with header detection.​​
+
+
+6. Update the identify_table Function: ​​Modify the identify_table function to standardize headers for comparison and ensure all required headers are present.​​
+
+Example: ​​```python def identify_table(df: pd.DataFrame) -> Optional[str]: """Identify the table schema based on dataframe headers.""" table_schemas = { "Contacts": {"name", "phone_number", "email", "last_contacted"}, "InstalledApps": {"application_name", "package_name", "install_date"}, "Calls": {"call_type", "time", "from_to", "duration", "location"}, "SMS": {"sms_type", "time", "from_to", "text", "location"}, "ChatMessages": {"sender", "time", "text"}, "Keylogs": {"application", "time", "text"}, }
+
+# Standardize headers for comparison
+file_headers = set(df.columns.str.lower().str.strip())
+for table_name, schema_headers in table_schemas.items():
+    if schema_headers.issubset(file_headers):  # Ensure all required headers are present
+        return table_name
+
+return None
+
+**7. Test with Sample Data:**
+​20​Use sample data files that match the expected schemas to test the application.​21​ ​22​This will help identify if the issue lies with the data cleaning process or the schema detection logic.​23​
+
+By following these steps, you can ensure that the data cleaning logic correctly prepares the uploaded data for schema identification, thereby resolving the validation error.​24​
+

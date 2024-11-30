@@ -1,0 +1,84 @@
+8. Address Potential Header Issues in Excel Files: If the issue arises specifically from Excel files, it might be due to extra rows or columns in the file, such as metadata or blank rows. Adjust the logic to handle such cases:
+
+def read_and_clean_excel(file_path: Path) -> pd.DataFrame:
+    """Reads an Excel file and removes unnecessary rows/columns."""
+    try:
+        df = pd.read_excel(file_path, header=None)
+        
+        # Identify the row containing headers (assumes headers are in the first few rows)
+        for i in range(5):  # Check the first 5 rows
+            potential_headers = df.iloc[i].dropna().str.lower().str.strip()
+            if potential_headers.isin([
+                "name", "phone_number", "email", "last_contacted", 
+                "application_name", "package_name", "install_date",
+                "call_type", "time", "from_to", "duration", "location",
+                "sms_type", "text", "sender", "application"
+            ]).all():
+                df.columns = df.iloc[i]
+                df = df[i + 1:].reset_index(drop=True)
+                break
+
+        # Drop empty rows/columns after setting headers
+        df = df.dropna(how='all')
+        df = df.dropna(axis=1, how='all')
+        return df
+    except Exception as e:
+        raise ValueError(f"Error reading Excel file: {e}")
+
+Update the processing logic to handle both CSV and Excel files consistently.
+
+
+---
+
+9. Enhance Debugging Information: Provide detailed error messages and debugging information to help trace issues. Update the schema validation step to log the mismatched headers:
+
+def identify_table(df: pd.DataFrame) -> Optional[str]:
+    """Identify the table schema based on dataframe headers."""
+    table_schemas = {
+        "Contacts": {"name", "phone_number", "email", "last_contacted"},
+        "InstalledApps": {"application_name", "package_name", "install_date"},
+        "Calls": {"call_type", "time", "from_to", "duration", "location"},
+        "SMS": {"sms_type", "time", "from_to", "text", "location"},
+        "ChatMessages": {"sender", "time", "text"},
+        "Keylogs": {"application", "time", "text"},
+    }
+
+    # Standardize headers for comparison
+    file_headers = set(df.columns.str.lower().str.strip())
+    for table_name, schema_headers in table_schemas.items():
+        if schema_headers.issubset(file_headers):  # Ensure all required headers are present
+            return table_name
+
+    # Log mismatched headers for debugging
+    missing_headers = {key: schema_headers - file_headers for key, schema_headers in table_schemas.items()}
+    logging.error(f"Could not identify table. Missing headers: {missing_headers}")
+    return None
+
+
+---
+
+10. Testing Checklist:
+
+Step 1: Test with clean CSV files and ensure headers match the schema exactly.
+
+Step 2: Test with Excel files, including files with metadata rows, and confirm the cleaning logic properly identifies headers.
+
+Step 3: Test with edge cases, such as files with missing or extra columns, to ensure meaningful error messages are provided.
+
+Step 4: Confirm that schema validation works consistently across file types.
+
+
+
+---
+
+11. Final Steps:
+
+Push the updated sanitize_dataframe, identify_table, and file reading functions to your repository.
+
+Update the application to use these enhanced functions.
+
+Document the expected file format and provide sample files in the repository for users.
+
+
+By addressing these points, you can ensure robust handling of various file formats and resolve issues related to schema identification and cleaning logic.
+
