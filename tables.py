@@ -65,8 +65,9 @@ def init_db():
     CREATE TABLE IF NOT EXISTS InstalledApps (
         app_id INTEGER PRIMARY KEY AUTOINCREMENT,
         application_name TEXT NOT NULL,
-        package_name TEXT UNIQUE NOT NULL,
-        install_date DATETIME
+        package_name TEXT NOT NULL,
+        install_date DATETIME,
+        UNIQUE(package_name, install_date)
     );
 
     CREATE TABLE IF NOT EXISTS Calls (

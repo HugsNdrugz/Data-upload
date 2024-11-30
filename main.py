@@ -11,25 +11,90 @@ st.set_page_config(
     initial_sidebar_state="collapsed"  # Better for mobile
 )
 
-# Custom CSS for mobile optimization
+# Enhanced mobile-first CSS
 st.markdown("""
     <style>
+        /* Mobile-optimized button styles */
         .stButton > button {
-            width: 100%;  /* Full-width buttons */
-            height: 3rem;  /* Taller buttons for better touch */
-            margin: 0.5rem 0;  /* Add spacing between elements */
+            width: 100%;
+            min-height: 3.5rem;
+            margin: 0.75rem 0;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            touch-action: manipulation;
         }
+        
+        /* Container spacing for mobile */
         .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
+            padding: 1.5rem 1rem;
+            max-width: 100%;
         }
-        /* Improve table scrolling on mobile */
+        
+        /* Enhanced table display for mobile */
         .stDataFrame {
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 1rem -1rem;
+            padding: 0 1rem;
         }
-        /* Better spacing for mobile */
+        
+        /* Mobile-friendly spacing and text */
         .element-container {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Improve readability on mobile */
+        .streamlit-expanderHeader {
+            font-size: 1.1rem;
+            padding: 1rem 0.75rem;
+        }
+        
+        /* Better touch targets */
+        .streamlit-expanderContent {
+            padding: 1rem;
+        }
+        
+        /* Enhanced mobile metrics display */
+        [data-testid="stMetricValue"] {
+            font-size: 1.5rem !important;
+        }
+        
+        /* Mobile-optimized headers */
+        h1, h2, h3 {
+            margin: 1rem 0;
+            line-height: 1.4;
+        }
+        
+        /* Improve form elements for touch */
+        .stSelectbox, .stTextInput {
+            margin: 1rem 0;
+        }
+        
+        /* Better error message display */
+        .stAlert {
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+        }
+        
+        /* Loading indicator optimization */
+        .stProgress > div > div {
+            height: 10px;
+            border-radius: 5px;
+        }
+        
+        /* Responsive images */
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Mobile-friendly JSON display */
+        .json-object {
+            font-size: 0.9rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            overflow-x: auto;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -158,26 +223,48 @@ def main():
                         st.write(f"From: {min_date}")
                         st.write(f"To: {max_date}")
                 
-                # Mobile-optimized Data Preview with expandable sections
-                with st.expander("📊 Data Preview (First 20 rows)", expanded=True):
-                    st.dataframe(
-                        df_preview.head(20),
-                        use_container_width=True,
-                        height=300  # Shorter height for mobile
-                    )
-                
-                with st.expander("📋 Column Information", expanded=False):
-                    # Simplified column info for mobile
-                    col_info = pd.DataFrame({
-                        'Column': df_preview.columns,
-                        'Type': df_preview.dtypes,
-                        'Missing': df_preview.isnull().sum()
-                    })
-                    st.dataframe(
-                        col_info,
-                        use_container_width=True,
-                        height=300  # Shorter height for mobile
-                    )
+                # Enhanced mobile-friendly data preview
+                with st.expander("📊 Data Preview", expanded=True):
+                    # Tab-based navigation for better mobile experience
+                    preview_tab, stats_tab = st.tabs(["Preview Data", "Column Info"])
+                    
+                    with preview_tab:
+                        # Compact preview with horizontal scroll
+                        st.markdown("""
+                            <style>
+                                .preview-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        # Show simplified preview for mobile
+                        preview_height = 250 if len(df_preview.columns) > 4 else 400
+                        st.dataframe(
+                            df_preview.head(10),  # Show fewer rows for better mobile view
+                            use_container_width=True,
+                            height=preview_height
+                        )
+                        
+                        # Add swipe hint for mobile
+                        st.caption("👈 Swipe left/right to view all columns")
+                    
+                    with stats_tab:
+                        # Enhanced column information display
+                        col_info = pd.DataFrame({
+                            'Column': df_preview.columns,
+                            'Type': df_preview.dtypes.astype(str),
+                            'Missing (%)': (df_preview.isnull().sum() / len(df_preview) * 100).round(1)
+                        })
+                        
+                        # Display stats in a mobile-friendly format
+                        for _, row in col_info.iterrows():
+                            with st.container():
+                                st.markdown(f"""
+                                    <div style='padding: 0.5rem; background-color: #f0f2f6; border-radius: 8px; margin-bottom: 0.5rem;'>
+                                        <strong>{row['Column']}</strong><br/>
+                                        Type: {row['Type']}<br/>
+                                        Missing: {row['Missing (%)']}%
+                                    </div>
+                                """, unsafe_allow_html=True)
 
                 # Process button
                 if st.button("Process and Import Data", key='process_button'):
@@ -245,11 +332,50 @@ def main():
                             except ValueError as ve:
                                 progress_bar.progress(100)
                                 status_container.error("⚠️ Validation Error")
+                                # Enhanced mobile-friendly error display
                                 st.markdown(f"""
-                                    <div style='padding: 1rem; background-color: #ffebe6; border-radius: 10px; margin: 1rem 0;'>
-                                        <h4 style='margin: 0; color: #ff4b4b;'>❌ Error Details:</h4>
-                                        <p style='margin: 0.5rem 0;'>{str(ve)}</p>
-                                        <p style='margin: 0.5rem 0;'>Please check your data format and try again.</p>
+                                    <div style='
+                                        padding: 1.2rem;
+                                        background-color: #ffebe6;
+                                        border-radius: 12px;
+                                        margin: 1rem -0.5rem;
+                                        box-shadow: 0 2px 4px rgba(255,75,75,0.1);
+                                    '>
+                                        <div style='
+                                            display: flex;
+                                            align-items: center;
+                                            margin-bottom: 0.8rem;
+                                        '>
+                                            <span style='
+                                                font-size: 1.5rem;
+                                                margin-right: 0.5rem;
+                                            '>⚠️</span>
+                                            <h4 style='
+                                                margin: 0;
+                                                color: #ff4b4b;
+                                                font-size: 1.1rem;
+                                            '>Error Details</h4>
+                                        </div>
+                                        <p style='
+                                            margin: 0.8rem 0;
+                                            font-size: 1rem;
+                                            line-height: 1.5;
+                                            color: #484848;
+                                        '>{str(ve)}</p>
+                                        <div style='
+                                            margin-top: 1rem;
+                                            padding-top: 0.8rem;
+                                            border-top: 1px solid rgba(255,75,75,0.2);
+                                        '>
+                                            <p style='
+                                                margin: 0;
+                                                font-size: 0.95rem;
+                                                color: #666;
+                                            '>💡 Try This:
+                                            <br/>• Check your data format
+                                            <br/>• Ensure all required fields are present
+                                            <br/>• Verify the file is not corrupted</p>
+                                        </div>
                                     </div>
                                 """, unsafe_allow_html=True)
                             except Exception as e:
