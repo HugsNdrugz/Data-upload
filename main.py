@@ -45,27 +45,37 @@ def main():
         try:
             # File information
             st.write("### File Information")
-            st.json({
-                "Filename": uploaded_file.name,
+            file_info = {
+                "Filename": str(uploaded_file.name),
                 "Size": f"{uploaded_file.size / 1024:.2f} KB",
-                "Type": uploaded_file.type
-            })
+                "Type": str(uploaded_file.type)
+            }
+            st.json(file_info)
 
             # Preview data with error handling
             try:
                 if uploaded_file.type == "text/csv":
                     df_preview = pd.read_csv(uploaded_file)
-                elif uploaded_file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-                                         "application/vnd.ms-excel"]:
+                elif any(uploaded_file.name.lower().endswith(ext) for ext in ['.xlsx', '.xls']):
+                    # Save the file temporarily
+                    temp_path = Path("temp") / uploaded_file.name
+                    temp_path.parent.mkdir(exist_ok=True)
+                    
+                    with open(temp_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
                     try:
-                        df_preview = pd.read_excel(uploaded_file, engine='openpyxl')
+                        if uploaded_file.name.lower().endswith('.xlsx'):
+                            df_preview = pd.read_excel(temp_path, engine='openpyxl')
+                        else:
+                            df_preview = pd.read_excel(temp_path, engine='xlrd')
                     except Exception as e:
-                        st.warning(f"Failed to read with openpyxl, trying xlrd: {e}")
-                        try:
-                            df_preview = pd.read_excel(uploaded_file, engine='xlrd')
-                        except Exception as e:
-                            st.error(f"Failed to read Excel file: {e}")
-                            return
+                        st.error(f"Failed to read Excel file: {str(e)}")
+                        return
+                    finally:
+                        # Clean up temp file
+                        if temp_path.exists():
+                            temp_path.unlink()
                     
                     if not df_preview.empty:
                         # Remove the first row and reset index
