@@ -65,16 +65,21 @@ def main():
                         f.write(uploaded_file.getbuffer())
                     
                     try:
-                        if uploaded_file.name.lower().endswith('.xlsx'):
-                            df_preview = pd.read_excel(temp_path, engine='openpyxl')
-                        else:
-                            df_preview = pd.read_excel(temp_path, engine='xlrd')
+                        # Read Excel file treating first row as column names
+                        df_preview = pd.read_excel(
+                            temp_path,
+                            engine='openpyxl' if uploaded_file.name.lower().endswith('.xlsx') else 'xlrd',
+                            header=0  # Explicitly set to use first row as headers
+                        )
                         
-                        # Remove metadata row
-                        if not df_preview.empty:
-                            # Remove metadata row if it contains the tracking text
-                            if any(df_preview.iloc[0].astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
-                                df_preview = df_preview.iloc[1:].reset_index(drop=True)
+                        # If the first row contains metadata about tracking smartphone
+                        if not df_preview.empty and any(df_preview.columns.astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
+                            # Read again with the second row as headers
+                            df_preview = pd.read_excel(
+                                temp_path,
+                                engine='openpyxl' if uploaded_file.name.lower().endswith('.xlsx') else 'xlrd',
+                                header=1  # Use second row as headers since first row is metadata
+                            )
                     except Exception as e:
                         st.error(f"Failed to read Excel file: {str(e)}")
                         return
@@ -176,7 +181,19 @@ def main():
                                 if uploaded_file.type == "text/csv":
                                     df = pd.read_csv(temp_path)
                                 else:
-                                    df = pd.read_excel(temp_path)
+                                    # Read Excel with proper header handling
+                                    df = pd.read_excel(
+                                        temp_path,
+                                        engine='openpyxl' if temp_path.suffix.lower() == '.xlsx' else 'xlrd',
+                                        header=0
+                                    )
+                                    # Check if first row is metadata and reread with correct header
+                                    if any(df.columns.astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
+                                        df = pd.read_excel(
+                                            temp_path,
+                                            engine='openpyxl' if temp_path.suffix.lower() == '.xlsx' else 'xlrd',
+                                            header=1
+                                        )
                                 
                                 # Apply data cleaning
                                 df = sanitize_dataframe(df)
