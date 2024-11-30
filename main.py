@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from data_processor import process_and_insert_data
 from utils import validate_file_type, read_file_sample, sanitize_dataframe
+from tables import identify_table
+import sqlite3
 
 st.set_page_config(
     page_title="Data Import Tool",
