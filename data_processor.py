@@ -117,7 +117,8 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
         if file_path.suffix.lower() == '.csv':
             df = pd.read_csv(file_path)
         else:
-            df = pd.read_excel(file_path)
+            # Skip first row for Excel files as it contains metadata
+            df = pd.read_excel(file_path, skiprows=1)
         
         stats["total_rows"] = len(df)
         
