@@ -1,0 +1,304 @@
+Here’s a comprehensive approach to check for and resolve all potential issues related to data processing and database constraints across your schema.
+
+
+---
+
+General Checklist for Each Table:
+
+1. Schema Validation:
+
+Ensure all required columns exist in the uploaded file.
+
+Validate the types and constraints of each column against the schema.
+
+
+
+2. Column Cleaning:
+
+Remove any leading or trailing whitespace.
+
+Replace empty strings with NULL or a default value if allowed by the schema.
+
+
+
+3. Missing Values:
+
+Drop rows with missing values in required columns (NOT NULL constraints).
+
+Optionally, provide defaults for missing values.
+
+
+
+4. Data Type Validation:
+
+Ensure columns expected to contain specific data types (e.g., DATETIME, INTEGER, TEXT) are properly converted.
+
+Use pd.to_datetime for date/time columns and pd.to_numeric for numeric columns.
+
+
+
+5. Duplication Handling:
+
+Remove duplicate rows where applicable to prevent redundancy.
+
+Ensure UNIQUE constraints in the database are respected.
+
+
+
+6. Constraint Checks:
+
+Validate foreign key relationships (e.g., ContactDetails.contact_id must exist in Contacts.contact_id).
+
+Check constraints like CHECK (type IN ('phone', 'email')).
+
+
+
+7. File-Specific Issues:
+
+Excel Files:
+
+Skip unnecessary header rows.
+
+Ensure consistent formatting across sheets.
+
+
+CSV Files:
+
+Handle encoding issues (e.g., UTF-8 vs. ASCII).
+
+Validate delimiters and escape characters.
+
+
+
+
+
+
+---
+
+Table-Specific Cleaning Logic:
+
+Contacts
+
+Columns: name, last_contacted
+
+Issues:
+
+last_contacted must be a valid DATETIME.
+
+Ensure names are not empty.
+
+
+Fix:
+
+
+def process_contacts(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(columns={"name": "Name", "last_contacted": "Last Contacted"})
+    df = clean_timestamps(df, "Last Contacted")
+    df = df.dropna(subset=["Name"])  # Drop rows without names
+    return df
+
+
+---
+
+ContactDetails
+
+Columns: contact_id, type, value
+
+Issues:
+
+contact_id must exist in Contacts.
+
+type must be either phone or email.
+
+
+Fix:
+
+
+def process_contact_details(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(columns={"contact_id": "Contact ID", "type": "Type", "value": "Value"})
+    df = df[df["Type"].isin(["phone", "email"])]  # Keep only valid types
+    df = df.dropna(subset=["Value"])  # Drop rows without values
+    return df
+
+
+---
+
+InstalledApps
+
+Columns: application_name, package_name, install_date
+
+Issues:
+
+install_date must be a valid DATETIME.
+
+package_name must be unique.
+
+
+Fix:
+
+
+def process_installed_apps(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(columns={"application_name": "Application Name", "package_name": "Package Name", "install_date": "Installed Date"})
+    df = clean_timestamps(df, "Installed Date")
+    df = df.drop_duplicates(subset=["Package Name"])  # Remove duplicate packages
+    return df
+
+
+---
+
+Calls
+
+Columns: caller_contact_id, recipient_contact_id, call_type, time, duration, location
+
+Issues:
+
+time must be a valid DATETIME.
+
+duration must be numeric.
+
+caller_contact_id and recipient_contact_id must exist in Contacts.
+
+
+Fix:
+
+
+def process_calls(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_timestamps(df, "time")
+    df["duration"] = pd.to_numeric(df["duration"], errors="coerce")
+    df = df.rename(columns={"from_to": "From/To", "call_type": "Call Type", "location": "Location"})
+    df = df.dropna(subset=["time", "duration"])  # Drop rows with missing time or duration
+    return df
+
+
+---
+
+SMS
+
+Columns: sender_contact_id, recipient_contact_id, sms_type, time, text, location
+
+Issues:
+
+time must be a valid DATETIME.
+
+text cannot be null.
+
+
+Fix:
+
+
+def process_sms(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_timestamps(df, "time")
+    df = df.rename(columns={"sms_type": "SMS Type", "text": "Text", "location": "Location"})
+    df = df.dropna(subset=["time", "Text"])  # Drop rows with missing time or text
+    return df
+
+
+---
+
+ChatMessages
+
+Columns: sender_contact_id, recipient_contact_id, time, text
+
+Issues:
+
+time must be a valid DATETIME.
+
+text cannot be null.
+
+
+Fix:
+
+
+def process_chat_messages(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_timestamps(df, "time")
+    df = df.rename(columns={"sender": "Sender", "text": "Text"})
+    df = df.dropna(subset=["time", "Text"])  # Drop rows with missing time or text
+    return df
+
+
+---
+
+Keylogs
+
+Columns: application, time, text
+
+Issues:
+
+time must be a valid DATETIME.
+
+text cannot be null.
+
+
+Fix:
+
+
+def process_keylogs(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_timestamps(df, "time")
+    df = df.rename(columns={"application": "Application", "text": "Text"})
+    df = df.dropna(subset=["time", "Text"])  # Drop rows with missing time or text
+    return df
+
+
+---
+
+General Recommendations:
+
+1. Logging:
+
+Log errors for missing or invalid data to a file for debugging.
+
+Include row numbers and column names in error logs.
+
+
+
+2. Preview Cleaned Data:
+
+Print a preview of the cleaned DataFrame before inserting it into the database.
+
+
+
+3. Batch Processing:
+
+Process and insert data in batches to improve performance and error handling.
+
+
+
+4. Validation Metrics:
+
+Count total rows, rows processed, and rows dropped due to errors.
+
+
+
+
+
+---
+
+Final Integration:
+
+In your main script, dynamically identify the table and apply the appropriate processing function:
+
+PROCESSING_FUNCTIONS = {
+    "Contacts": process_contacts,
+    "ContactDetails": process_contact_details,
+    "InstalledApps": process_installed_apps,
+    "Calls": process_calls,
+    "SMS": process_sms,
+    "ChatMessages": process_chat_messages,
+    "Keylogs": process_keylogs,
+}
+
+def identify_table_and_process(df: pd.DataFrame):
+    for table_name, processing_func in PROCESSING_FUNCTIONS.items():
+        try:
+            processed_df = processing_func(df.copy())
+            if not processed_df.empty:
+                return table_name, processed_df
+        except Exception as e:
+            logging.error(f"Failed to process {table_name}: {e}")
+    raise ValueError("Could not match data to any table schema.")
+
+
+---
+
+This comprehensive approach ensures your data is thoroughly cleaned, validated, and ready for insertion into the database. Let me know if you encounter any specific issues!
+

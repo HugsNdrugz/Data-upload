@@ -118,15 +118,45 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
     if pd.isna(date_str) or not date_str:
         return None
     
+    if isinstance(date_str, datetime):
+        return date_str
+    
     try:
         if isinstance(date_str, str):
-            dt = parse(date_str)
+            # Remove any extra whitespace
+            date_str = date_str.strip()
+            
+            # Try parsing with dateutil parser
+            try:
+                dt = parse(date_str)
+            except ValueError:
+                # Try common formats if dateutil parser fails
+                common_formats = [
+                    '%Y-%m-%d %H:%M:%S',
+                    '%Y-%m-%d %H:%M',
+                    '%Y-%m-%d',
+                    '%d/%m/%Y %H:%M:%S',
+                    '%d/%m/%Y %H:%M',
+                    '%d/%m/%Y',
+                ]
+                
+                for fmt in common_formats:
+                    try:
+                        dt = datetime.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    raise ValueError(f"Could not parse date string: {date_str}")
+            
+            # Set timezone if not present
             if dt.tzinfo is None:
                 dt = pytz.timezone(timezone).localize(dt)
             return dt
-        return date_str if isinstance(date_str, datetime) else None
+        
+        return None
     except Exception as e:
-        logging.warning(f"Failed to parse timestamp '{date_str}': {e}")
+        logging.error(f"Failed to parse timestamp '{date_str}': {e}")
         return None
 
 def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
@@ -155,18 +185,30 @@ def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
     # Select and rename columns
     df = df[list(column_mapping.keys())].rename(columns=column_mapping)
     
-    # Apply data type conversions
+    # Apply data type conversions and handle NULL constraints
     for col, dtype in zip(schema["columns"], schema["types"]):
         if col in df.columns:
             try:
                 if dtype == datetime:
+                    # Convert to datetime and handle invalid values
                     df[col] = df[col].apply(parse_timestamp_flexible)
+                    # Drop rows where required datetime fields are null
+                    if col in ['time', 'last_contacted', 'install_date']:
+                        df = df.dropna(subset=[col])
+                        logging.info(f"Dropped {len(df)} rows with null {col}")
                 elif dtype == int:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 else:
-                    df[col] = df[col].astype(str)
+                    # Handle text fields, replace NaN with empty string for optional text fields
+                    if col not in ['name', 'application', 'text']:  # Required text fields
+                        df[col] = df[col].fillna('').astype(str)
+                    else:
+                        # Drop rows where required text fields are null
+                        df = df.dropna(subset=[col])
+                        logging.info(f"Dropped {len(df)} rows with null {col}")
             except Exception as e:
-                logging.warning(f"Error converting column {col}: {e}")
+                logging.error(f"Error converting column {col}: {e}")
+                raise ValueError(f"Failed to process column {col}: {e}")
     
     return df
 
