@@ -156,7 +156,12 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
         if file_path.suffix.lower() == '.csv':
             df = pd.read_csv(file_path)
         else:
-            df = pd.read_excel(file_path)
+            try:
+                df = pd.read_excel(file_path, engine='openpyxl')
+            except Exception as e:
+                logging.error(f"Error reading Excel file: {e}")
+                # Try reading with different Excel engine
+                df = pd.read_excel(file_path, engine='xlrd')
         
         stats["total_rows"] = len(df)
         
