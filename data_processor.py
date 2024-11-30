@@ -167,13 +167,13 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
         else:
             logging.info("Attempting to read Excel file")
             try:
-                df = pd.read_excel(file_path, engine='openpyxl')
-                logging.info("Successfully read Excel file with openpyxl")
+                df = pd.read_excel(file_path, engine='openpyxl', skiprows=1)
+                logging.info("Successfully read Excel file with openpyxl, skipping first row")
             except Exception as e:
                 logging.warning(f"Failed to read with openpyxl: {e}")
                 try:
-                    df = pd.read_excel(file_path, engine='xlrd')
-                    logging.info("Successfully read Excel file with xlrd")
+                    df = pd.read_excel(file_path, engine='xlrd', skiprows=1)
+                    logging.info("Successfully read Excel file with xlrd, skipping first row")
                 except Exception as e:
                     logging.error(f"Failed to read with xlrd: {e}")
                     raise ValueError(f"Could not read Excel file: {e}")
