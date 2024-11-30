@@ -8,8 +8,31 @@ from utils import validate_file_type, read_file_sample, sanitize_dataframe
 st.set_page_config(
     page_title="Data Import Tool",
     page_icon="📊",
-    layout="wide"
+    initial_sidebar_state="collapsed"  # Better for mobile
 )
+
+# Custom CSS for mobile optimization
+st.markdown("""
+    <style>
+        .stButton > button {
+            width: 100%;  /* Full-width buttons */
+            height: 3rem;  /* Taller buttons for better touch */
+            margin: 0.5rem 0;  /* Add spacing between elements */
+        }
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+        /* Improve table scrolling on mobile */
+        .stDataFrame {
+            overflow-x: auto;
+        }
+        /* Better spacing for mobile */
+        .element-container {
+            margin-bottom: 1rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 def save_uploaded_file(uploaded_file):
     """Save uploaded file to temp location"""
@@ -99,18 +122,18 @@ def main():
                 
                 # Data Quality Metrics
                 st.write("#### Data Quality Overview")
-                col1, col2, col3 = st.columns(3)
+                # Use 2 columns for better mobile layout
+                col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Total Rows", len(df_preview))
+                    st.metric("Total Columns", len(df_preview.columns))
                     st.metric("Missing Values", df_preview.isnull().sum().sum())
                 with col2:
-                    st.metric("Total Columns", len(df_preview.columns))
                     st.metric("Duplicate Rows", len(df_preview) - len(df_preview.drop_duplicates()))
-                with col3:
-                    st.metric("Memory Usage", f"{df_preview.memory_usage(deep=True).sum() / 1024:.2f} KB")
                     non_null_counts = df_preview.count()
                     completeness = (non_null_counts / len(df_preview)).mean() * 100
                     st.metric("Data Completeness", f"{completeness:.1f}%")
+                    st.metric("Size", f"{df_preview.memory_usage(deep=True).sum() / 1024:.1f} KB")
                 
                 # Column Analysis
                 st.write("#### Column Analysis")
@@ -135,29 +158,25 @@ def main():
                         st.write(f"From: {min_date}")
                         st.write(f"To: {max_date}")
                 
-                # Data Preview with tabs
-                tab1, tab2 = st.tabs(["Data Preview", "Column Info"])
-                
-                with tab1:
-                    st.write("#### Data Preview (First 50 rows)")
+                # Mobile-optimized Data Preview with expandable sections
+                with st.expander("📊 Data Preview (First 20 rows)", expanded=True):
                     st.dataframe(
-                        df_preview.head(50),
+                        df_preview.head(20),
                         use_container_width=True,
-                        height=400
+                        height=300  # Shorter height for mobile
                     )
                 
-                with tab2:
-                    st.write("#### Column Information")
+                with st.expander("📋 Column Information", expanded=False):
+                    # Simplified column info for mobile
                     col_info = pd.DataFrame({
                         'Column': df_preview.columns,
                         'Type': df_preview.dtypes,
-                        'Non-Null': df_preview.count(),
                         'Missing': df_preview.isnull().sum()
                     })
                     st.dataframe(
                         col_info,
                         use_container_width=True,
-                        height=400
+                        height=300  # Shorter height for mobile
                     )
 
                 # Process button
