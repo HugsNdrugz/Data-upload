@@ -57,7 +57,9 @@ def main():
                     df_preview = pd.read_csv(uploaded_file)
                 elif uploaded_file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                                          "application/vnd.ms-excel"]:
-                    df_preview = pd.read_excel(uploaded_file, skiprows=1)
+                    df_preview = pd.read_excel(uploaded_file)
+                    # Remove the first row and reset index
+                    df_preview = df_preview.iloc[1:].reset_index(drop=True)
                 else:
                     st.error("Unsupported file type")
                     return
