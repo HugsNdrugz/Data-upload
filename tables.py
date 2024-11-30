@@ -113,9 +113,7 @@ def init_db():
         logging.error(f"Error initializing database: {e}")
 
 def parse_timestamp_flexible(date_str: str, timezone: str = DEFAULT_TIMEZONE) -> Optional[datetime]:
-    """
-    Parses a date string into a datetime object, handling various formats and timezones.
-    """
+    """Parses a date string into a datetime object, handling various formats and timezones."""
     try:
         dt = parse(date_str)
         if dt.tzinfo is None:
@@ -171,11 +169,15 @@ def process_data(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
         if not schema:
             raise ValueError(f"Schema not found for table: {table_name}")
 
+        # Remove duplicates for InstalledApps based on package_name and install_date
+        if table_name == "InstalledApps":
+            df = df.drop_duplicates(subset=["package_name", "install_date"])
+
         df = df.rename(columns=schema["renames"])
-        df = validate_data(df,table_name)
+        df = validate_data(df, table_name)
     except Exception as e:
         logging.error(f"Error processing data for {table_name}: {e}")
-        raise  # Re-raise the exception after logging
+        raise
     return df
 
 def identify_table(df: pd.DataFrame) -> Optional[str]:
@@ -185,33 +187,31 @@ def identify_table(df: pd.DataFrame) -> Optional[str]:
         if set(schema["renames"].keys()).issubset(file_headers):
             return table
         elif set(schema["columns"]).issubset(file_headers):
-             return table
+            return table
     return None
 
-def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame):
+def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame) -> int:
     """Inserts data into the database in batches, handling unique constraints."""
     try:
         total_rows = len(df)
         successful_inserts = 0
         
         for i in range(0, total_rows, BATCH_SIZE):
-            batch_df = df[i:i + BATCH_SIZE]
+            batch_df = df.iloc[i:i + BATCH_SIZE]
             
             if table_name == "InstalledApps":
-                # For InstalledApps, handle each row individually to manage duplicates
+                # For InstalledApps, handle each row individually with INSERT OR REPLACE
+                cursor = conn.cursor()
                 for _, row in batch_df.iterrows():
                     try:
-                        # Try to insert, if fails due to duplicate, update the existing record
-                        row_dict = row.to_dict()
-                        cursor = conn.cursor()
                         cursor.execute("""
                             INSERT OR REPLACE INTO InstalledApps 
                             (application_name, package_name, install_date)
                             VALUES (?, ?, ?)
-                        """, (row_dict['application_name'], row_dict['package_name'], row_dict['install_date']))
+                        """, (row['application_name'], row['package_name'], row['install_date']))
                         successful_inserts += 1
                     except sqlite3.Error as e:
-                        logging.warning(f"Could not process row with package_name {row_dict.get('package_name')}: {e}")
+                        logging.warning(f"Could not process row with package_name {row['package_name']}: {e}")
                 conn.commit()
             else:
                 # For other tables, use the standard batch insert
@@ -227,7 +227,7 @@ def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame):
         logging.error(f"Unexpected error during data insertion into {table_name}: {e}")
         raise
 
-def process_and_insert_data(file_path: Path):
+def process_and_insert_data(file_path: Path) -> Dict[str, int]:
     """Processes data and inserts it into the database in batches."""
     try:
         # Dynamically handle CSV or Excel
@@ -248,17 +248,27 @@ def process_and_insert_data(file_path: Path):
         df = process_data(table_name, df)
 
         with sqlite3.connect(DATABASE_FILE) as conn:
-            insert_data(conn, table_name, df)
-        logging.info(f"Data insertion complete for {table_name}.")
+            processed_rows = insert_data(conn, table_name, df)
+            
+        return {
+            "table_name": table_name,
+            "total_rows": len(df),
+            "processed_rows": processed_rows,
+            "failed_rows": len(df) - processed_rows
+        }
 
     except ValueError as ve:
         logging.error(f"Data processing error: {ve}")
+        raise
     except pd.errors.EmptyDataError:
         logging.error(f"Error: The file {file_path} is empty or contains no data.")
+        raise
     except pd.errors.ParserError:
         logging.error(f"Error: Unable to parse the file {file_path}. It may be corrupted or in an unexpected format.")
+        raise
     except Exception as e:
         logging.error(f"Unexpected error during file processing: {e}")
+        raise
 
 def select_file() -> Optional[Path]:
     """Opens a file dialog to select a file and returns the file path."""

@@ -1,0 +1,92 @@
+The error UNIQUE constraint failed: InstalledApps.package_name indicates that you are attempting to insert a duplicate value into the package_name column in the InstalledApps table, which is defined as unique in your schema.
+
+Causes
+
+1. Duplicate Entries in the Data: The data being imported has multiple rows with the same package_name.
+
+
+2. Already Existing Records: The table might already contain a record with the same package_name, and you're trying to insert it again.
+
+
+3. Incorrect Handling During Insert: The code does not check for duplicates before inserting data.
+
+
+
+
+---
+
+Solutions
+
+1. Check for Duplicates in the Data
+
+Before inserting data into the database, ensure that your data does not have duplicate package_name entries.
+
+Add a step in your processing logic to remove duplicates:
+
+def process_installed_apps(df: pd.DataFrame) -> pd.DataFrame:
+    """Processes the InstalledApps table."""
+    df = df.rename(columns={"application_name": "Application Name", "package_name": "Package Name", "install_date": "Installed Date"})
+    df = df.drop_duplicates(subset=["Package Name"])  # Remove duplicates based on 'Package Name'
+    df = clean_timestamps(df, "Installed Date")
+    return df
+
+
+---
+
+2. Handle Duplicates During Insert
+
+Modify your database insertion logic to handle duplicates gracefully. Use the INSERT OR IGNORE or ON CONFLICT SQL clause to skip duplicate entries.
+
+Example:
+
+try:
+    conn = sqlite3.connect(DATABASE_FILE)
+    df.to_sql("InstalledApps", conn, if_exists="append", index=False)
+    
+    # Handle duplicates explicitly
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_package_name ON InstalledApps (package_name)")
+    conn.commit()
+except sqlite3.IntegrityError as e:
+    print(f"Duplicate entry skipped: {e}")
+finally:
+    conn.close()
+
+
+---
+
+3. Validate Against Existing Records
+
+Before inserting new data, compare it with the existing data in the database to avoid duplicates:
+
+def validate_against_existing(df: pd.DataFrame, table_name: str, unique_column: str) -> pd.DataFrame:
+    conn = sqlite3.connect(DATABASE_FILE)
+    existing_data = pd.read_sql_query(f"SELECT {unique_column} FROM {table_name}", conn)
+    conn.close()
+    
+    # Remove rows with duplicate unique_column values
+    df = df[~df[unique_column].isin(existing_data[unique_column])]
+    return df
+
+Call this function during processing:
+
+df = validate_against_existing(df, "InstalledApps", "Package Name")
+
+
+---
+
+Summary
+
+To resolve the issue:
+
+1. Clean your input data to remove duplicates using drop_duplicates.
+
+
+2. Modify database insert logic to skip duplicates with INSERT OR IGNORE or ON CONFLICT.
+
+
+3. Validate input data against existing records to avoid re-insertion of duplicates.
+
+
+
+Let me know if you need these fixes implemented in your current repository structure!
+
