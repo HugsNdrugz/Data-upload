@@ -221,22 +221,37 @@ def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame) -> 
                 cursor = conn.cursor()
                 for _, row in batch_df.iterrows():
                     try:
+                        # Convert datetime to string if it's not None
+                        install_date = row['install_date'].isoformat() if pd.notnull(row['install_date']) else None
+                        
                         cursor.execute("""
                             INSERT OR IGNORE INTO InstalledApps 
                             (application_name, package_name, install_date)
                             VALUES (?, ?, ?)
-                        """, (row['application_name'], row['package_name'], row['install_date']))
+                        """, (row['application_name'], row['package_name'], install_date))
+                        
                         if cursor.rowcount > 0:
                             successful_inserts += 1
+                            logging.info(f"Inserted new record: {row['package_name']}")
                         else:
-                            logging.info(f"Skipping duplicate package_name: {row['package_name']}")
+                            logging.info(f"Skipped duplicate package_name: {row['package_name']}")
                     except sqlite3.Error as e:
                         logging.warning(f"Could not process row with package_name {row['package_name']}: {e}")
                 conn.commit()
             else:
                 # For other tables, use the standard batch insert
-                batch_df.to_sql(table_name, conn, if_exists="append", index=False)
-                successful_inserts += len(batch_df)
+                try:
+                    batch_df.to_sql(table_name, conn, if_exists="append", index=False)
+                    successful_inserts += len(batch_df)
+                except sqlite3.IntegrityError as e:
+                    logging.warning(f"Integrity error during batch insert: {e}")
+                    # Fall back to row-by-row insert for the batch
+                    for _, row in batch_df.iterrows():
+                        try:
+                            row.to_frame().T.to_sql(table_name, conn, if_exists="append", index=False)
+                            successful_inserts += 1
+                        except sqlite3.IntegrityError:
+                            logging.info(f"Skipped duplicate record in {table_name}")
             
             logging.info(f"Processed rows {i} to {min(i + BATCH_SIZE, total_rows)} for {table_name}.")
         
