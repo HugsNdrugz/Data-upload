@@ -67,7 +67,7 @@ def init_db():
         application_name TEXT NOT NULL,
         package_name TEXT NOT NULL,
         install_date DATETIME,
-        UNIQUE(package_name, install_date)
+        UNIQUE(package_name)
     );
 
     CREATE TABLE IF NOT EXISTS Calls (
@@ -200,16 +200,19 @@ def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame) -> 
             batch_df = df.iloc[i:i + BATCH_SIZE]
             
             if table_name == "InstalledApps":
-                # For InstalledApps, handle each row individually with INSERT OR REPLACE
+                # For InstalledApps, use INSERT OR IGNORE to skip duplicates
                 cursor = conn.cursor()
                 for _, row in batch_df.iterrows():
                     try:
                         cursor.execute("""
-                            INSERT OR REPLACE INTO InstalledApps 
+                            INSERT OR IGNORE INTO InstalledApps 
                             (application_name, package_name, install_date)
                             VALUES (?, ?, ?)
                         """, (row['application_name'], row['package_name'], row['install_date']))
-                        successful_inserts += 1
+                        if cursor.rowcount > 0:
+                            successful_inserts += 1
+                        else:
+                            logging.info(f"Skipping duplicate package_name: {row['package_name']}")
                     except sqlite3.Error as e:
                         logging.warning(f"Could not process row with package_name {row['package_name']}: {e}")
                 conn.commit()
