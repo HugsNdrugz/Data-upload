@@ -39,7 +39,11 @@ def main():
 
     # File upload section
     st.header("Upload Data File")
-    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx', 'xls'])
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx', 'xls'], key='file_uploader')
+    
+    # Add a session state to track upload status
+    if 'upload_state' not in st.session_state:
+        st.session_state.upload_state = False
     
     if uploaded_file:
         try:
@@ -111,7 +115,10 @@ def main():
                 )
 
             # Process button
-            if st.button("Process and Import Data"):
+            if st.button("Process and Import Data", key='process_button'):
+                st.session_state.upload_state = True
+            
+            if st.session_state.upload_state:
                 progress_bar = st.progress(0)
                 status_container = st.empty()
                 
