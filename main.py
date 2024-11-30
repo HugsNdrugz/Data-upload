@@ -244,8 +244,14 @@ def main():
                                         st.warning(f"⚠️ {result['failed_rows']} rows failed to import. Please check the data format.")
                             except ValueError as ve:
                                 progress_bar.progress(100)
-                                status_container.error(f"Validation Error: {str(ve)}")
-                                st.error("Please ensure your data matches the required format and try again.")
+                                status_container.error("⚠️ Validation Error")
+                                st.markdown(f"""
+                                    <div style='padding: 1rem; background-color: #ffebe6; border-radius: 10px; margin: 1rem 0;'>
+                                        <h4 style='margin: 0; color: #ff4b4b;'>❌ Error Details:</h4>
+                                        <p style='margin: 0.5rem 0;'>{str(ve)}</p>
+                                        <p style='margin: 0.5rem 0;'>Please check your data format and try again.</p>
+                                    </div>
+                                """, unsafe_allow_html=True)
                             except Exception as e:
                                 progress_bar.progress(100)
                                 status_container.error(f"Error processing data: {str(e)}")
@@ -266,23 +272,31 @@ def main():
         except Exception as e:
             st.error(f"Error processing file: {e}")
     
-    # Help section
-    with st.expander("Help & Instructions"):
+    # Mobile-friendly Help section with icons
+    with st.expander("📱 Help & Instructions"):
         st.markdown("""
-        ### How to use this tool:
-        1. Upload a CSV or Excel file containing your data
-        2. Preview the data to ensure it's correct
-        3. Click 'Process and Import Data' to start the import process
-        
-        ### Supported file types:
-        - CSV (.csv)
-        - Excel (.xlsx, .xls)
-        
-        ### Data requirements:
-        - Files must contain the required columns for their respective data types
-        - Timestamps should be in a recognizable format
-        - Text fields should be properly encoded
-        """)
+        <div style='padding: 1rem; background-color: #f0f2f6; border-radius: 10px;'>
+            <h3 style='margin-top: 0;'>📝 Quick Guide:</h3>
+            <ol style='margin-left: 1rem;'>
+                <li style='margin: 0.5rem 0;'>📂 Upload your CSV or Excel file</li>
+                <li style='margin: 0.5rem 0;'>👀 Check the preview</li>
+                <li style='margin: 0.5rem 0;'>▶️ Tap 'Process' to start import</li>
+            </ol>
+            
+            <h4>📁 Supported Files:</h4>
+            <ul style='margin-left: 1rem;'>
+                <li style='margin: 0.5rem 0;'>CSV (.csv)</li>
+                <li style='margin: 0.5rem 0;'>Excel (.xlsx, .xls)</li>
+            </ul>
+            
+            <h4>⚠️ Requirements:</h4>
+            <ul style='margin-left: 1rem;'>
+                <li style='margin: 0.5rem 0;'>Required columns must be present</li>
+                <li style='margin: 0.5rem 0;'>Valid timestamp formats</li>
+                <li style='margin: 0.5rem 0;'>Proper text encoding</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
