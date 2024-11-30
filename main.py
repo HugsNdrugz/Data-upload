@@ -12,7 +12,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 st.set_page_config(
     page_title="Data Import Tool",
     page_icon="📊",
-    layout="wide"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 def save_uploaded_file(uploaded_file):
@@ -58,15 +59,19 @@ def main():
             
             st.write("### Data Preview")
             
-            # Display basic statistics
+            # Display basic statistics in a mobile-friendly layout
             st.write("#### Dataset Overview")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Rows", len(df_preview))
-            with col2:
-                st.metric("Total Columns", len(df_preview.columns))
-            with col3:
-                st.metric("Memory Usage", f"{df_preview.memory_usage(deep=True).sum() / 1024:.2f} KB")
+            metrics_container = st.container()
+            with metrics_container:
+                # Use smaller columns on mobile
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Rows", len(df_preview))
+                    st.metric("Total Columns", len(df_preview.columns))
+                with col2:
+                    st.metric("Memory Usage", f"{df_preview.memory_usage(deep=True).sum() / 1024:.2f} KB")
+                    null_count = df_preview.isnull().sum().sum()
+                    st.metric("Missing Values", null_count)
             
             # Show timestamp columns if any
             date_cols = df_preview.select_dtypes(include=['datetime64']).columns
@@ -80,19 +85,30 @@ def main():
                     st.write(f"From: {min_date}")
                     st.write(f"To: {max_date}")
             
-            # Display interactive data table
-            st.write("#### Data Table (First 100 rows)")
-            st.dataframe(df_preview.head(100), use_container_width=True)
+            # Mobile-friendly data preview with tabs
+            tab1, tab2 = st.tabs(["Data Preview", "Column Info"])
             
-            # Show column info
-            st.write("#### Column Information")
-            col_info = pd.DataFrame({
-                'Column': df_preview.columns,
-                'Type': df_preview.dtypes,
-                'Non-Null Count': df_preview.count(),
-                'Null Count': df_preview.isnull().sum()
-            })
-            st.dataframe(col_info, use_container_width=True)
+            with tab1:
+                st.write("#### Data Preview (First 50 rows)")
+                st.dataframe(
+                    df_preview.head(50),
+                    use_container_width=True,
+                    height=400
+                )
+            
+            with tab2:
+                st.write("#### Column Information")
+                col_info = pd.DataFrame({
+                    'Column': df_preview.columns,
+                    'Type': df_preview.dtypes,
+                    'Non-Null': df_preview.count(),
+                    'Missing': df_preview.isnull().sum()
+                })
+                st.dataframe(
+                    col_info,
+                    use_container_width=True,
+                    height=400
+                )
 
             # Process button
             if st.button("Process and Import Data"):
