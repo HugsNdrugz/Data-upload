@@ -10,12 +10,14 @@ from schemas import TABLE_SCHEMAS, DATABASE_FILE, BATCH_SIZE
 
 def normalize_column_name(col: str) -> str:
     """Normalize column name for comparison"""
-    return col.lower().strip().replace(' ', '_')
+    return str(col).lower().strip().replace(' ', '_')
 
 def identify_table(df: pd.DataFrame) -> Optional[str]:
     """Identifies the table based on the file's headers with flexible matching."""
+    # Convert all headers to normalized form for comparison
     file_headers = {normalize_column_name(col) for col in df.columns}
-    logging.info(f"Found headers in file: {file_headers}")
+    logging.info(f"Found headers in file: {list(df.columns)}")
+    logging.info(f"Normalized headers: {list(file_headers)}")
     
     for table, schema in TABLE_SCHEMAS.items():
         schema_headers = {normalize_column_name(col) for col in schema["columns"]}
@@ -25,17 +27,26 @@ def identify_table(df: pd.DataFrame) -> Optional[str]:
         logging.info(f"Schema headers: {schema_headers}")
         logging.info(f"Rename headers: {rename_headers}")
         
-        # Check for Keylog table first
-        if table in ['KeylogImport', 'Keylogs'] and set(['application', 'time', 'text']).issubset(file_headers):
-            logging.info(f"Matched {table} table")
-            return table
-            
-        # Then check other tables
-        if schema_headers.issubset(file_headers) or rename_headers.issubset(file_headers):
-            logging.info(f"Matched {table} table")
+        # Special handling for Keylog tables
+        if table in ['KeylogImport', 'Keylogs']:
+            required_keylog_headers = {'application', 'time', 'text'}
+            normalized_required = {normalize_column_name(h) for h in required_keylog_headers}
+            if normalized_required.issubset(file_headers):
+                logging.info(f"Matched {table} table based on required keylog headers")
+                return table
+        
+        # Check if either schema headers or rename headers are present
+        # Make the matching more lenient by checking if most headers are present
+        schema_match_ratio = len(schema_headers.intersection(file_headers)) / len(schema_headers)
+        rename_match_ratio = len(rename_headers.intersection(file_headers)) / len(rename_headers)
+        
+        # If 80% or more headers match, consider it a match
+        if schema_match_ratio >= 0.8 or rename_match_ratio >= 0.8:
+            logging.info(f"Matched {table} table with match ratio: {max(schema_match_ratio, rename_match_ratio):.2f}")
             return table
     
     logging.error("No matching table schema found")
+    logging.error(f"Available headers: {list(df.columns)}")
     return None
 
 def init_db():
@@ -91,23 +102,20 @@ def init_db():
     """
     with sqlite3.connect(DATABASE_FILE) as conn:
         conn.executescript(schema)
+        logging.info("Database initialized successfully")
 
 def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[datetime]:
-    """Parse timestamp with timezone handling"""
+    """Parse timestamp with flexible format handling"""
     if pd.isna(date_str) or not date_str:
         return None
     
     try:
-        # Handle string dates
         if isinstance(date_str, str):
-            try:
-                dt = parse(date_str)
-                if dt.tzinfo is None:
-                    dt = pytz.timezone(timezone).localize(dt)
-                return dt
-            except:
-                return None
-        return None
+            dt = parse(date_str)
+            if dt.tzinfo is None:
+                dt = pytz.timezone(timezone).localize(dt)
+            return dt
+        return date_str if isinstance(date_str, datetime) else None
     except Exception as e:
         logging.warning(f"Failed to parse timestamp '{date_str}': {e}")
         return None
@@ -118,21 +126,25 @@ def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
     if not schema:
         raise ValueError(f"Schema not found for table: {table_name}")
     
-    # Normalize column names
-    df.columns = [normalize_column_name(col) for col in df.columns]
+    # Store original column names for reference
+    original_columns = df.columns
+    logging.info(f"Original columns: {list(original_columns)}")
     
-    # Map columns to schema
+    # Create a mapping of normalized names to original names
+    norm_to_orig = {normalize_column_name(col): col for col in original_columns}
+    
+    # Map schema columns to actual columns
     column_mapping = {}
     for expected_col in schema["columns"]:
-        normalized_expected = normalize_column_name(expected_col)
-        if normalized_expected in df.columns:
-            column_mapping[normalized_expected] = expected_col
+        norm_expected = normalize_column_name(expected_col)
+        if norm_expected in norm_to_orig:
+            column_mapping[norm_to_orig[norm_expected]] = expected_col
     
     if not column_mapping:
-        raise ValueError("No matching columns found in the data")
+        raise ValueError(f"No matching columns found in the data. Expected columns: {schema['columns']}")
     
     # Select and rename columns
-    df = df.rename(columns=column_mapping)
+    df = df[list(column_mapping.keys())].rename(columns=column_mapping)
     
     # Apply data type conversions
     for col, dtype in zip(schema["columns"], schema["types"]):
@@ -147,7 +159,7 @@ def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
             except Exception as e:
                 logging.warning(f"Error converting column {col}: {e}")
     
-    return df[list(column_mapping.values())]
+    return df
 
 def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     """Process and import data with statistics tracking"""
@@ -160,37 +172,23 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     
     try:
         logging.info(f"Processing file: {file_path}")
-        # Read file
+        
+        # Read the file
         if file_path.suffix.lower() == '.csv':
             df = pd.read_csv(file_path)
-            logging.info("Successfully read CSV file")
         else:
-            logging.info("Attempting to read Excel file")
             try:
-                # Try reading with openpyxl first
                 df = pd.read_excel(file_path, engine='openpyxl')
-                logging.info("Successfully read Excel file with openpyxl")
             except Exception as e:
                 logging.warning(f"Failed to read with openpyxl: {e}")
-                try:
-                    # Fallback to xlrd
-                    df = pd.read_excel(file_path, engine='xlrd')
-                    logging.info("Successfully read Excel file with xlrd")
-                except Exception as e:
-                    logging.error(f"Failed to read with xlrd: {e}")
-                    raise ValueError(f"Could not read Excel file: {e}")
-            
-            if not df.empty:
-                # Remove the first row after reading
-                df = df.iloc[1:].reset_index(drop=True)
-                logging.info("Successfully removed first row and reset index")
+                df = pd.read_excel(file_path, engine='xlrd')
         
         stats["total_rows"] = len(df)
         
         # Identify table
         table_name = identify_table(df)
         if not table_name:
-            raise ValueError("Could not identify table schema")
+            raise ValueError("Could not identify table schema. Please check the file headers.")
         
         stats["table_name"] = table_name
         
@@ -213,4 +211,3 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
 
 def main():
     init_db()
-    # Add any additional initialization here if needed
