@@ -119,14 +119,23 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
         return datetime.now(pytz.timezone(timezone))
 
 def validate_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
-    """Validate and clean data according to schema"""
+    """Validate and clean data according to schema with detailed error reporting"""
     schema = TABLE_SCHEMAS[table_name]
     
+    # Check for empty dataframe
+    if df.empty:
+        raise ValueError("The uploaded file contains no data")
+        
     # Validate columns
     required_columns = schema["columns"]
     missing_columns = set(required_columns) - set(df.columns)
     if missing_columns:
-        raise ValueError(f"Missing required columns: {missing_columns}")
+        raise ValueError(f"Missing required columns: {', '.join(missing_columns)}. Please ensure your file contains all required fields.")
+        
+    # Check for empty required columns
+    empty_columns = [col for col in required_columns if df[col].isna().all()]
+    if empty_columns:
+        raise ValueError(f"The following required columns are empty: {', '.join(empty_columns)}")
     
     # Select only required columns
     df = df[required_columns]
@@ -157,12 +166,25 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     }
     
     try:
-        # Read file
+        # Read file with error handling
         if file_path.suffix.lower() == '.csv':
-            df = pd.read_csv(file_path)
+            try:
+                df = pd.read_csv(file_path)
+            except pd.errors.EmptyDataError:
+                raise ValueError("The CSV file is empty")
+            except pd.errors.ParserError:
+                raise ValueError("Unable to parse CSV file - please check the format")
         else:
-            # Skip first row for Excel files as it contains metadata
-            df = pd.read_excel(file_path, skiprows=1)
+            try:
+                # First try without skipping rows
+                df = pd.read_excel(file_path)
+                if df.empty:
+                    # If empty, try with skipping first row
+                    df = pd.read_excel(file_path, skiprows=1)
+            except ValueError as e:
+                raise ValueError(f"Excel file error: {str(e)}")
+            except Exception as e:
+                raise ValueError(f"Unable to read Excel file: {str(e)}")
         
         stats["total_rows"] = len(df)
         
