@@ -70,10 +70,8 @@ def main():
                         else:
                             df_preview = pd.read_excel(temp_path, engine='xlrd')
                         
-                        # Remove metadata and unnamed columns
+                        # Remove metadata row
                         if not df_preview.empty:
-                            # Drop columns that start with 'Unnamed:'
-                            df_preview = df_preview.loc[:, ~df_preview.columns.str.contains('^Unnamed:', na=False)]
                             # Remove metadata row if it contains the tracking text
                             if any(df_preview.iloc[0].astype(str).str.contains('Tracking Smartphone', case=False, na=False)):
                                 df_preview = df_preview.iloc[1:].reset_index(drop=True)
