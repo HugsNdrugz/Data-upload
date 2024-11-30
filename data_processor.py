@@ -167,22 +167,23 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
         else:
             logging.info("Attempting to read Excel file")
             try:
+                # Try reading with openpyxl first
                 df = pd.read_excel(file_path, engine='openpyxl')
-                # Remove the first row after reading
-                df = df.iloc[1:]
-                df = df.reset_index(drop=True)
-                logging.info("Successfully read Excel file with openpyxl and removed first row")
+                logging.info("Successfully read Excel file with openpyxl")
             except Exception as e:
                 logging.warning(f"Failed to read with openpyxl: {e}")
                 try:
+                    # Fallback to xlrd
                     df = pd.read_excel(file_path, engine='xlrd')
-                    # Remove the first row after reading
-                    df = df.iloc[1:]
-                    df = df.reset_index(drop=True)
-                    logging.info("Successfully read Excel file with xlrd and removed first row")
+                    logging.info("Successfully read Excel file with xlrd")
                 except Exception as e:
                     logging.error(f"Failed to read with xlrd: {e}")
                     raise ValueError(f"Could not read Excel file: {e}")
+            
+            if not df.empty:
+                # Remove the first row after reading
+                df = df.iloc[1:].reset_index(drop=True)
+                logging.info("Successfully removed first row and reset index")
         
         stats["total_rows"] = len(df)
         
