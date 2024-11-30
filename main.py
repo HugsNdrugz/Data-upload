@@ -112,26 +112,54 @@ def main():
 
             # Process button
             if st.button("Process and Import Data"):
+                progress_bar = st.progress(0)
+                status_container = st.empty()
+                
                 with st.spinner("Processing data..."):
                     # Save uploaded file to temp location
                     temp_path = save_uploaded_file(uploaded_file)
                     if temp_path:
                         try:
+                            # Update progress
+                            status_container.info("Validating data format...")
+                            progress_bar.progress(25)
+                            
                             # Process the file
                             result = process_and_insert_data(Path(temp_path))
-                            st.success("Data imported successfully!")
                             
-                            # Display import statistics
+                            # Update progress
+                            progress_bar.progress(100)
+                            status_container.success("Data imported successfully!")
+                            
+                            # Display detailed import statistics
                             if result:
-                                st.write("Import Statistics:")
-                                st.json(result)
+                                st.write("### Import Statistics")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Total Rows", result["total_rows"])
+                                    st.metric("Processed Rows", result["processed_rows"])
+                                with col2:
+                                    st.metric("Failed Rows", result["failed_rows"])
+                                    st.metric("Target Table", result["table_name"])
+                                
+                                if result["failed_rows"] > 0:
+                                    st.warning(f"⚠️ {result['failed_rows']} rows failed to import. Please check the data format.")
+                                
+                        except ValueError as ve:
+                            progress_bar.progress(100)
+                            status_container.error(f"Validation Error: {str(ve)}")
+                            st.error("Please ensure your data matches the required format and try again.")
                         except Exception as e:
-                            st.error(f"Error processing data: {e}")
+                            progress_bar.progress(100)
+                            status_container.error(f"Error processing data: {str(e)}")
+                            st.error("An unexpected error occurred. Please check the data format and try again.")
                         finally:
                             # Cleanup temp file
                             os.unlink(temp_path)
                     else:
-                        st.error("Failed to save uploaded file")
+                        progress_bar.progress(100)
+                        status_container.error("Failed to save uploaded file")
+                        st.error("Could not process the uploaded file. Please try again.")
 
         except Exception as e:
             st.error(f"Error reading file: {e}")

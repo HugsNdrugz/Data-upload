@@ -67,6 +67,16 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
     if pd.isna(date_str) or not date_str:
         return datetime.now(pytz.timezone(timezone))  # Default to current time for required fields
     
+    # Define supported date formats
+    date_formats = [
+        "%b %d, %I:%M %p",     # Jun 7, 1:28 PM
+        "%Y-%m-%d %H:%M:%S",   # 2024-06-07 13:28:00
+        "%b %d, %Y %I:%M %p",  # Jun 7, 2024 1:28 PM
+        "%Y-%m-%d %H:%M",      # 2024-06-07 13:28
+        "%m/%d/%Y %H:%M:%S",   # 06/07/2024 13:28:00
+        "%m/%d/%Y %I:%M %p",   # 06/07/2024 1:28 PM
+    ]
+    
     try:
         # Convert to string and handle numeric timestamps
         if isinstance(date_str, (int, float)):
@@ -78,7 +88,19 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
         # Handle string dates
         date_str = str(date_str).strip()
         
-        # Try parsing with dateutil.parser
+        # Try specific formats first
+        for fmt in date_formats:
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                # If year is not in the format, use current year
+                if dt.year == 1900:
+                    current_year = datetime.now().year
+                    dt = dt.replace(year=current_year)
+                return pytz.timezone(timezone).localize(dt)
+            except ValueError:
+                continue
+        
+        # Try parsing with dateutil.parser as fallback
         try:
             dt = parse(date_str)
         except:
