@@ -185,12 +185,15 @@ def process_data(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
         if not schema:
             raise ValueError(f"Schema not found for table: {table_name}")
 
-        df = df.rename(columns=schema["renames"])
-        
-        # Drop duplicates based on unique constraints before validation
+        # Drop duplicates before renaming (using original column names)
         if table_name == "InstalledApps":
-            df = df.drop_duplicates(subset=['Package Name'], keep='first')
-            logging.info(f"Dropped duplicate Package Name entries, {len(df)} unique records remaining")
+            # Check if we have the original or renamed column name
+            package_name_col = "Package Name" if "Package Name" in df.columns else "package_name"
+            df = df.drop_duplicates(subset=[package_name_col], keep='first')
+            logging.info(f"Dropped duplicate package name entries, {len(df)} unique records remaining")
+
+        # Rename columns according to schema
+        df = df.rename(columns=schema["renames"])
         
         df = validate_data(df, table_name)
         
