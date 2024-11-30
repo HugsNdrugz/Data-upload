@@ -148,7 +148,20 @@ def main():
                                 status_container.info("Validating data format...")
                                 progress_bar.progress(25)
                                 
-                                # Process the file
+                                # Clean and validate the data before processing
+                                if uploaded_file.type == "text/csv":
+                                    df = pd.read_csv(temp_path)
+                                else:
+                                    df = pd.read_excel(temp_path)
+                                
+                                # Apply data cleaning
+                                df = sanitize_dataframe(df)
+                                
+                                # Show preview of cleaned data
+                                st.write("### Preview of Cleaned Data")
+                                st.dataframe(df.head())
+                                
+                                # Process the cleaned file
                                 result = process_and_insert_data(Path(temp_path))
                                 
                                 # Update progress

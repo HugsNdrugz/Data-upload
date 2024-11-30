@@ -21,13 +21,31 @@ def read_file_sample(file_path: Path, sample_size: int = 5) -> Tuple[Optional[pd
         return None, ''
 
 def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Basic dataframe cleaning"""
+    """Enhanced dataframe cleaning and validation"""
     # Remove completely empty rows and columns
     df = df.dropna(how='all')
     df = df.dropna(axis=1, how='all')
     
-    # Strip whitespace from string columns
+    # Clean string columns
     for col in df.select_dtypes(include=['object']).columns:
+        # Strip whitespace
         df[col] = df[col].str.strip()
+        # Replace empty strings with NaN
+        df[col] = df[col].replace(r'^\s*$', pd.NA, regex=True)
+        # Remove special characters that might cause JSON issues
+        df[col] = df[col].apply(lambda x: x.encode('ascii', 'ignore').decode('ascii') if isinstance(x, str) else x)
+    
+    # Handle datetime columns
+    datetime_cols = df.select_dtypes(include=['datetime64']).columns
+    for col in datetime_cols:
+        df[col] = pd.to_datetime(df[col], errors='coerce')
+    
+    # Handle numeric columns
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Drop rows where all key columns are NA
+    df = df.dropna(subset=df.columns, how='all')
     
     return df
