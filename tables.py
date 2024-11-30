@@ -186,6 +186,12 @@ def process_data(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Schema not found for table: {table_name}")
 
         df = df.rename(columns=schema["renames"])
+        
+        # Drop duplicates based on unique constraints before validation
+        if table_name == "InstalledApps":
+            df = df.drop_duplicates(subset=['Package Name'], keep='first')
+            logging.info(f"Dropped duplicate Package Name entries, {len(df)} unique records remaining")
+        
         df = validate_data(df, table_name)
         
         # Check and remove existing records
