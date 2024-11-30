@@ -15,20 +15,27 @@ def normalize_column_name(col: str) -> str:
 def identify_table(df: pd.DataFrame) -> Optional[str]:
     """Identifies the table based on the file's headers with flexible matching."""
     file_headers = {normalize_column_name(col) for col in df.columns}
+    logging.info(f"Found headers in file: {file_headers}")
     
     for table, schema in TABLE_SCHEMAS.items():
-        # Try exact match first
-        if all(normalize_column_name(col) in file_headers for col in schema["columns"]):
-            return table
+        schema_headers = {normalize_column_name(col) for col in schema["columns"]}
+        rename_headers = {normalize_column_name(col) for col in schema["renames"].keys()}
         
-        # Try matching rename keys
-        if all(normalize_column_name(col) in file_headers for col in schema["renames"].keys()):
+        logging.info(f"Checking table {table}")
+        logging.info(f"Schema headers: {schema_headers}")
+        logging.info(f"Rename headers: {rename_headers}")
+        
+        # Check for Keylog table first
+        if table in ['KeylogImport', 'Keylogs'] and set(['application', 'time', 'text']).issubset(file_headers):
+            logging.info(f"Matched {table} table")
             return table
             
-        # Special case for KeylogImport/Keylogs
-        if set(['application', 'time', 'text']).issubset({normalize_column_name(col) for col in df.columns}):
-            return 'KeylogImport'
+        # Then check other tables
+        if schema_headers.issubset(file_headers) or rename_headers.issubset(file_headers):
+            logging.info(f"Matched {table} table")
+            return table
     
+    logging.error("No matching table schema found")
     return None
 
 def init_db():
@@ -152,16 +159,24 @@ def process_and_insert_data(file_path: Path) -> Dict[str, Any]:
     }
     
     try:
+        logging.info(f"Processing file: {file_path}")
         # Read file
         if file_path.suffix.lower() == '.csv':
             df = pd.read_csv(file_path)
+            logging.info("Successfully read CSV file")
         else:
+            logging.info("Attempting to read Excel file")
             try:
                 df = pd.read_excel(file_path, engine='openpyxl')
+                logging.info("Successfully read Excel file with openpyxl")
             except Exception as e:
-                logging.error(f"Error reading Excel file: {e}")
-                # Try reading with different Excel engine
-                df = pd.read_excel(file_path, engine='xlrd')
+                logging.warning(f"Failed to read with openpyxl: {e}")
+                try:
+                    df = pd.read_excel(file_path, engine='xlrd')
+                    logging.info("Successfully read Excel file with xlrd")
+                except Exception as e:
+                    logging.error(f"Failed to read with xlrd: {e}")
+                    raise ValueError(f"Could not read Excel file: {e}")
         
         stats["total_rows"] = len(df)
         
