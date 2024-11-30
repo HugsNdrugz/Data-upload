@@ -188,17 +188,43 @@ def identify_table(df: pd.DataFrame) -> Optional[str]:
     return None
 
 def insert_data(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame):
-    """Inserts data into the database in batches."""
+    """Inserts data into the database in batches, handling unique constraints."""
     try:
         total_rows = len(df)
+        successful_inserts = 0
+        
         for i in range(0, total_rows, BATCH_SIZE):
             batch_df = df[i:i + BATCH_SIZE]
-            batch_df.to_sql(table_name, conn, if_exists="append", index=False)
-            logging.info(f"Inserted rows {i} to {min(i + BATCH_SIZE, total_rows)} into {table_name}.")
-    except sqlite3.Error as e:
-        logging.error(f"Error inserting data into {table_name}: {e}")
+            
+            if table_name == "InstalledApps":
+                # For InstalledApps, handle each row individually to manage duplicates
+                for _, row in batch_df.iterrows():
+                    try:
+                        # Try to insert, if fails due to duplicate, update the existing record
+                        row_dict = row.to_dict()
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO InstalledApps 
+                            (application_name, package_name, install_date)
+                            VALUES (?, ?, ?)
+                        """, (row_dict['application_name'], row_dict['package_name'], row_dict['install_date']))
+                        successful_inserts += 1
+                    except sqlite3.Error as e:
+                        logging.warning(f"Could not process row with package_name {row_dict.get('package_name')}: {e}")
+                conn.commit()
+            else:
+                # For other tables, use the standard batch insert
+                batch_df.to_sql(table_name, conn, if_exists="append", index=False)
+                successful_inserts += len(batch_df)
+            
+            logging.info(f"Processed rows {i} to {min(i + BATCH_SIZE, total_rows)} for {table_name}.")
+        
+        logging.info(f"Successfully processed {successful_inserts} out of {total_rows} rows for {table_name}.")
+        return successful_inserts
+        
     except Exception as e:
-         logging.error(f"Unexpected error during data insertion into {table_name}: {e}")
+        logging.error(f"Unexpected error during data insertion into {table_name}: {e}")
+        raise
 
 def process_and_insert_data(file_path: Path):
     """Processes data and inserts it into the database in batches."""
