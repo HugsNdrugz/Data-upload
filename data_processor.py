@@ -68,7 +68,27 @@ def parse_timestamp_flexible(date_str: str, timezone: str = "UTC") -> Optional[d
         return None
     
     try:
-        dt = parse(str(date_str))
+        # Convert to string and handle numeric timestamps
+        if isinstance(date_str, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(date_str))
+            except ValueError:
+                pass
+        
+        # Handle string dates
+        date_str = str(date_str).strip()
+        
+        # Try parsing with dateutil.parser
+        try:
+            dt = parse(date_str)
+        except:
+            # Fallback for Excel date format
+            try:
+                dt = datetime(1899, 12, 30) + pd.Timedelta(days=float(date_str))
+            except:
+                return None
+        
+        # Set timezone if not present
         if dt.tzinfo is None:
             dt = pytz.timezone(timezone).localize(dt)
         return dt
